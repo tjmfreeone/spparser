@@ -2,6 +2,7 @@ import csv
 import json
 from .utils import Exceptions
 
+
 class Writer(object):
     @staticmethod
     def write_csv(data, file_path, mode="w", newline=None, each_line_type="dict", headers=None, encoding="utf-8"):
@@ -25,7 +26,6 @@ class Writer(object):
                 csv_iter.writeheader()
                 for line in data:
                     csv_iter.writerow(line)
-
 
     @staticmethod
     def write_json(data, file_path, mode="w", compress=False, encoding='utf-8', indent=2, sort_keys=True, ensure_ascii=False):
