@@ -68,7 +68,7 @@ def main():
     read_csv result: data = [{'a': '122github', 'b': '2'}, {'a': '-8spparser999', 'b': '4'}]
     '''
     html_text = Reader.read_anyfile("demo.html",line_by_line=False)
-    res = Extractor.xpath("//title/text()",hteml_text)
+    res = Extractor.xpath("//title/text()",html_text)
     print(res)
 
 if __name__ == "__main__":
