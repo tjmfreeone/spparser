@@ -107,4 +107,4 @@ When debug is set to True, output logs:
 # History
 ## 0.2.10
 - async_anyfile_reader, async_anyfile_writer, async_csv_reader, async_csv_writer support.
-- xpath, css, regex selectors in Exractor support.
+- xpath, css, regex selectors in Extractor support.
