@@ -28,6 +28,7 @@ class async_csv_writer(BaseWriter):
                 self.writer = csv.writer(self.f, fieldnames=self.headers)
             elif self.each_line_type == "dict":
                 self.writer = csv.DictWriter(self.f, fieldnames=self.headers)
+                self.writer.writeheader()
         else:
             self.has_headers = False
 

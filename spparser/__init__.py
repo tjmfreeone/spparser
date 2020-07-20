@@ -5,4 +5,4 @@ from .Writer import Writer
 from .AsyncReader import async_csv_reader
 from .AsyncWriter import async_csv_writer
 
-__version__=="0.2.10"
+__version__="0.2.10"
