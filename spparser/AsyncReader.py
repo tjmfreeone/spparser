@@ -156,6 +156,7 @@ class async_mongo_reader(BaseReader):
         self.db = self.client[self.database]
         self.db.authenticate(name=self.username, password=self.password)
         self.collection = self.db[self.collection_name]
+        self.cursor = self.collection.find(self.query, batch_size=self.batch_size)
 
     def get_db(self):
         return self.db
@@ -170,7 +171,7 @@ class async_mongo_reader(BaseReader):
             self._reinit_vals()
             raise StopAsyncIteration
 
-        for line in self.collection.find(self.query).batch_size(self.batch_size):
+        for line in self.cursor:
             if self.max_read_lines and self.total_count >= self.max_read_lines:
                 self.finished = True
                 break

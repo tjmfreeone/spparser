@@ -1,7 +1,10 @@
 import logging
 import csv
-from .utils import Exceptions
 import pymongo
+
+from .utils import Exceptions
+from hashlib import md5
+from pymongo import UpdateOne
 
 
 class BaseWriter(object):
@@ -125,7 +128,10 @@ class async_mongo_writer(BaseWriter):
     async def write(self, data):
         if not isinstance(data, list):
             raise Exceptions.ArgValueError("input data type must be list")
-        self.collection.insert_many(data)
+        for line in data:
+            if "_id" not in line.keys():
+                line["_id"] = md5(str(line).encode()).hexdigest()
+        self.collection.bulk_write([UpdateOne({"_id":line["_id"]}, {"$set":line}, upsert=True) for line in data])
         self.total_count += len(data)
         if self.debug:
             logging.info("to destination: {}.{}, write {} lines.".format(self.database, self.collection.name, len(data)))
