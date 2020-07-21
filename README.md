@@ -105,7 +105,7 @@ debug设置为True时，输出日志:
 ...
 ```
 对于MongoDB的异步读写:
-```
+```python
 async def main():
     reader = AsyncReader.async_mongo_reader(query={},collection="src_col", host="my_address",port=27017, database="my_db",username="my_name", password="my_pwd", batch_size=100,max_read_lines=1000)
     with AsyncWriter.async_mongo_writer(collection="dest_col", host="my_address",port=27017, database="my_db",username="my_name", password="my_pwd") as writer:
