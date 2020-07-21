@@ -1,6 +1,8 @@
 import logging
 import csv
 from .utils import Exceptions
+import pymongo
+
 
 class BaseWriter(object):
     def __init__(self):
@@ -91,6 +93,39 @@ class async_anyfile_writer(BaseWriter):
             logging.info("to destination: {}, write {} lines.".format(self.file_path,len(data)))
 
 
+class async_mongo_writer(BaseWriter):
+    def __init__(self, collection, host=None, port=None, database=None, username=None, password=None, debug=True, **kwargs):
+        super().__init__()
+        if not host or not port or not database:
+            raise Exceptions.ParamsError("lack of mongodb's host or port or database")
+        self.collection_name = collection
+        self.host = host
+        self.port = port
+        self.username = username
+        self.password = password
+        self.database = database
+        self.debug = debug
+        self.finished = None
+        self.total_count = 0
+        self._init_client()
+    
+    def _init_client(self):
+        self.client = pymongo.MongoClient(host=self.host, port=self.port)
+        self.db = self.client[self.database]
+        self.db.authenticate(name=self.username, password=self.password)
+        self.collection = self.db[self.collection_name]
 
+    def __enter__(self):
+        return self
 
-
+    def __exit__(self, exc_type, exc_value, traceback):
+        if self.debug:
+            logging.info("to destination: {}.{}, total write {} lines.".format(self.database, self.collection.name, self.total_count))
+    
+    async def write(self, data):
+        if not isinstance(data, list):
+            raise Exceptions.ArgValueError("input data type must be list")
+        self.collection.insert_many(data)
+        self.total_count += len(data)
+        if self.debug:
+            logging.info("to destination: {}.{}, write {} lines.".format(self.database, self.collection.name, len(data)))
