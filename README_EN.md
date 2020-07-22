@@ -121,5 +121,5 @@ if __name__ == "__main__":
 ## 0.2.10
 - async_anyfile_reader, async_anyfile_writer, async_csv_reader, async_csv_writer support.
 - xpath, css, regex selectors in Extractor support.
-## 0.3.20
+## 0.3.30
 - async_mongo_reader, async_mongo_writer support
