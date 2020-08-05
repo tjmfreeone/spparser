@@ -4,10 +4,12 @@ from idataapi_transform import ProcessFactory, GetterConfig, WriterConfig
 import time
 
 async def main():
-    getter = AsyncReader.async_mysql_reader(query_sql="select * from EMPLOYEE", host="localhost", port=None, database="test", username="admin", password="12qwaszx", batch_size=5, max_read_lines=4,debug=True,)
-    #with AsyncWriter.async_mongo_writer(collection="test1", host="120.79.97.220",port=55555, database="jinmin_data",username="jinmin", password="jinmin") as writer:
-    async for items in getter:
-        pass    #await writer.write(items)
+    getter = AsyncReader.async_mysql_reader(query_sql="select * from EMPLOYEE", host="localhost", port=None, database="test", username="admin", password="12qwaszx", batch_size=5, max_read_lines=None,debug=True,)
+    with AsyncWriter.async_mysql_writer(table="MPLOYEE", host="localhost", port=None, database="test", username="admin", password="12qwaszx", auto_id=True,debug=True) as writer:
+        async for items in getter:
+            for item in items:
+                print(item)
+            await writer.write(items)
         #for item in items:
         #    print(item)
                 # Parser process

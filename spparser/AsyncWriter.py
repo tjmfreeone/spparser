@@ -1,6 +1,7 @@
 import logging
 import csv
 import pymongo
+import pymysql
 
 from .utils import Exceptions
 from hashlib import md5
@@ -135,3 +136,99 @@ class async_mongo_writer(BaseWriter):
         self.total_count += len(data)
         if self.debug:
             logging.info("to destination: {}.{}, write {} lines.".format(self.database, self.collection.name, len(data)))
+
+
+class async_mysql_writer(BaseWriter):
+    def __init__(self, table=None, host=None, port=None, database=None, username=None, password=None, charset='utf8', debug=True, create_table_sql=None, auto_id=False, **kwargs):
+        super().__init__()
+        if not host or not database or not table:
+            raise Exceptions.ParamsError("lack of mysql's host or database or table")
+        if table and create_table_sql:
+            raise Exceptions.ParamsError("parameter table and create_table_sql cannot be set at the same time")
+        if not table and not create_table_sql:
+            raise Exceptions.ParamsError("one of  'table' and 'create_table_sql' must be set")
+        self.create_table_sql = create_table_sql
+        self.table_name = table if table else self._get_table_name()
+        self.host = host
+        self.port = port
+        self.username = username
+        self.password = password
+        self.database = database
+        self.charset = charset
+        self._init_connection()
+        self.auto_id = auto_id
+        self.debug = debug
+        self.finished = None
+        self.total_count = 0
+        self.is_already_init_table = False
+    
+    def _init_connection(self):
+        self.conn = pymysql.connect(host=self.host, port=self.port, user=self.username, password=self.password,
+                database=self.database, charset=self.charset)
+        self.cursor = self.conn.cursor()
+
+    def _init_table(self, data_0=None):
+        if self.create_table_sql:
+            self.cursor.execute(self.create_table_sql)
+            self.is_already_init_table = True
+            return
+        if not data_0:
+            self.is_already_init_table = True
+            return
+
+        field_config = ["_id VARCHAR(33)"] if self.auto_id else []
+        for k,v in data_0.items():
+            if type(v) in [str, list, dict, tuple, set, bool]:
+                field_config.append("{} VARCHAR({})".format(k ,len(str(v))+1024))
+            if type(v) in [int,float]:
+                field_config.append("{} DOUBLE".format(k))
+        if self.auto_id:
+            field_config.append("PRIMARY KEY(_id)")
+
+        init_sql = "CREATE TABLE IF NOT EXISTS {} ({});".format(self.table_name, ",".join(field_config))
+        self.cursor.execute(init_sql)
+        self.is_already_init_tagble = True
+
+    def _get_table_name(self):
+        flag = False
+        for word in self.create_table_sql.split(" "):
+            if word.upper() == "TABLE":
+                flag = True
+                continue
+            if flag and word:
+                return word
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        if self.debug:
+            logging.info("to destination: {}.{}, total write {} lines.".format(self.database, self.table_name, self.total_count))
+    
+    async def write(self, data):
+        if not self.is_already_init_table:
+            self._init_table(data_0=data[0])
+        if not isinstance(data, list):
+            raise Exceptions.ArgValueError("input data type must be list")
+
+        try:
+            for line in data:
+                if self.auto_id and "_id" not in line.keys():
+                    line["_id"] = md5(str(line).encode()).hexdigest() 
+                values_config = []
+                for v in line.values():
+                    if type(v) in [str, list, dict, tuple, set, bool]:
+                        values_config.append("'"+str(v)+"'")
+                    if type(v) in [int,float]:
+                        values_config.append(str(v))
+                replace_sql = "REPLACE INTO {}({})  VALUES ({});".format(self.table_name, ",".join(line.keys()), ",".join(values_config))
+                print(replace_sql)
+                self.cursor.execute(replace_sql)
+            self.conn.commit()
+        except Exception as e:
+            self.conn.rollback()
+            raise Exceptions.AsyncWriterError(e)
+        
+        self.total_count += len(data)
+        if self.debug:
+            logging.info("to destination: {}.{}, write {} lines.".format(self.database, self.table_name, len(data)))
