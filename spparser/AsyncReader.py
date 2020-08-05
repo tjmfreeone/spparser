@@ -1,8 +1,9 @@
-import csv
-import logging
 from .utils import Exceptions
+import csv
+import re
+import logging
 import pymongo
-
+import pymysql
 
 class BaseReader(object):
     def __init__(self):
@@ -37,7 +38,7 @@ class async_csv_reader(BaseReader):
     async def __anext__(self):
         if self.finished:
             if self.debug:
-                logging.info("from source: {}, total get {} items.".format(self.file_path, self.total_count))
+                logging.info("from source: {}, total get {} lines.".format(self.file_path, self.total_count))
             self._reinit_vals()
             raise StopAsyncIteration
 
@@ -54,7 +55,7 @@ class async_csv_reader(BaseReader):
             self.finished = True
             return self._ret_each()
         if self.debug:
-            logging.info("from source: {}, total get {} items.".format(self.file_path, self.total_count))
+            logging.info("from source: {}, total get {} lines.".format(self.file_path, self.total_count))
         self._reinit_vals()
         raise StopAsyncIteration
 
@@ -67,7 +68,7 @@ class async_csv_reader(BaseReader):
 
     def _ret_each(self):
         if self.debug and self.each_list:
-            logging.info("from source: {}, this batch get {} items".format(self.file_path, len(self.each_list)))
+            logging.info("from source: {}, this batch get {} lines".format(self.file_path, len(self.each_list)))
         each = self.each_list
         self.each_list = list()
         return each
@@ -167,7 +168,7 @@ class async_mongo_reader(BaseReader):
     async def __anext__(self):
         if self.finished:
             if self.debug:
-                logging.info("from source: {}.{}, total get {} items.".format(self.database, self.collection.name, self.total_count))
+                logging.info("from source: {}.{}, total get {} lines.".format(self.database, self.collection.name, self.total_count))
             self._reinit_vals()
             raise StopAsyncIteration
 
@@ -185,7 +186,7 @@ class async_mongo_reader(BaseReader):
             self.finished = True
             return self._ret_each()
         if self.debug:
-            logging.info("from source: {}.{}, total get {} items.".format(self.database, self.collection.name, self.total_count))
+            logging.info("from source: {}.{}, total get {} lines.".format(self.database, self.collection.name, self.total_count))
         self._reinit_vals()
         raise StopAsyncIteration
         
@@ -205,3 +206,108 @@ class async_mongo_reader(BaseReader):
         self.each_list = list()
         return each
 
+
+class async_mysql_reader(BaseReader):
+    def __init__(self, query_sql=None, host=None, port=None, database=None, username=None, password=None,charset='utf8', batch_size=10, max_read_lines=None,debug=True, **kwargs):
+        super().__init__()
+        if not host or not database:
+            raise Exceptions.ParamsError("lack of mongodb's host or database")
+        if not query_sql:
+            raise Exceptions.ParamsError("lack of sqery_sql")
+
+        self.batch_size = batch_size
+        self.query_sql = query_sql 
+        self.table_name = self._get_table_name()
+        self.host = host
+        self.port = port if port else 3306
+        self.username = username
+        self.password = password
+        self.database = database
+        self.charset = charset
+        self.each_list = []
+        self.debug = debug
+        self.finished = None
+        self.total_count = 0
+        self._init_connection()
+        self.max_read_lines = max_read_lines if max_read_lines else self._get_query_lines_count()
+        self.cursor.execute(self.query_sql)
+        self.percentage = None
+        self.done_lines_num = 0
+
+    def _init_connection(self):
+        self.conn = pymysql.connect(host=self.host, port=self.port, user=self.username, password=self.password, 
+                database=self.database, charset=self.charset)
+        self.cursor = self.conn.cursor(pymysql.cursors.SSDictCursor)
+
+    def get_connection(self):
+        '''
+        return new connection
+        '''
+        return pymsql.connect(host=self.host, port=self.port, user=self.username, password=self.password,
+                database=self.database, charset=self.charset)
+
+    def _get_table_name(self):
+        flag = False
+        for word in self.query_sql.split(" "):
+            if word.upper() == "FROM":
+                flag = True
+                continue
+            if flag and word:
+                return word
+            
+
+
+    def _get_query_lines_count(self):
+        target = re.search(r"SELECT(.*?)FROM",self.query_sql, re.I).group(1).strip()
+        self.cursor.execute("SELECT COUNT({}) FROM {}".format(target, self.table_name))
+        return self.cursor.fetchone()["COUNT({})".format(target)]
+        
+
+    def __aiter__(self):
+        return self
+
+    async def __anext__(self):
+        if self.finished:
+            if self.debug:
+                logging.info("from source: {}.{}, total get {} lines.".format(self.database, self.table_name, self.total_count))
+            self._reinit_vals_and_close()
+            raise StopAsyncIteration
+
+        
+        while True:
+            line = self.cursor.fetchone()
+            if self.max_read_lines and self.total_count >= self.max_read_lines:
+                self.finished = True
+                break
+            self.done_lines_num += 1
+            self.each_list.append(line)
+            self.total_count += 1
+            if len(self.each_list) >= self.batch_size:
+                return self._ret_each()
+
+        if self.each_list:
+            self.finished = True
+            return self._ret_each()
+        if self.debug:
+            logging.info("from source: {}.{}, total get {} lines.".format(self.database, self.table_name, self.total_count))
+        self._reinit_vals_and_close()
+        raise StopAsyncIteration
+        
+
+    def _reinit_vals_and_close(self):
+        self.finished = False
+        self.each_list = []
+        self.total_count = 0
+        self.read_lines_count = 0
+        self.each_list.clear()
+        self.cursor.close()
+        self.conn.close()
+
+    def _ret_each(self):
+        if self.debug and self.each_list:
+            logging.info("from source: {}.{}, this batch get {} lines, percentage: {:.2f}%".format(self.database, self.table_name, len(self.each_list), self.done_lines_num/self.max_read_lines*100))
+        each = self.each_list
+        self.each_list = list()
+        return each
+
+    

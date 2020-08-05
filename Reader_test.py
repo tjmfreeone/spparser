@@ -4,11 +4,12 @@ from idataapi_transform import ProcessFactory, GetterConfig, WriterConfig
 import time
 
 async def main():
-    getter = AsyncReader.async_mongo_reader(query={"id":{"$exists":True}},collection="xiaohongshu_post_id_update_to_20200719", host="120.79.97.220",port=55555, database="jinmin_data",username="jinmin", password="jinmin", batch_size=100,max_read_lines=1000)
-    with AsyncWriter.async_mongo_writer(collection="test1", host="120.79.97.220",port=55555, database="jinmin_data",username="jinmin", password="jinmin") as writer:
-        async for items in getter:
-            await writer.write(items)
-            #for item in items:
+    getter = AsyncReader.async_mysql_reader(query_sql="select * from EMPLOYEE", host="localhost", port=None, database="test", username="admin", password="12qwaszx", batch_size=5, max_read_lines=4,debug=True,)
+    #with AsyncWriter.async_mongo_writer(collection="test1", host="120.79.97.220",port=55555, database="jinmin_data",username="jinmin", password="jinmin") as writer:
+    async for items in getter:
+        pass    #await writer.write(items)
+        #for item in items:
+        #    print(item)
                 # Parser process
 
 async def idata():
@@ -25,8 +26,8 @@ if __name__ == "__main__":
     loop.run_until_complete(main())
     t1 = time.time() - ts1
 
-    ts2 = time.time()
-    loop.run_until_complete(idata())
-    t2 = time.time() - ts2
+    #ts2 = time.time()
+    #loop.run_until_complete(idata())
+    #t2 = time.time() - ts2
 
-    print(t1, t2)
+    #print(t1, t2)
