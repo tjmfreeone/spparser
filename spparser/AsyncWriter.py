@@ -176,16 +176,20 @@ class async_mysql_writer(BaseWriter):
             self.is_already_init_table = True
             return
 
-        field_config = ["_id VARCHAR(33)"] if self.auto_id else []
+        field_config = ["_id VARCHAR(32)"] if self.auto_id and "_id" not in data_0 else []
         for k,v in data_0.items():
-            if type(v) in [str, list, dict, tuple, set, bool]:
+            if k == "_id":
+                field_config.append("{} VARCHAR({})".format(k,len(v)))
+                continue
+            if type(v) in [str, list, dict, tuple, set, bool] or v is None:
                 field_config.append("{} VARCHAR({})".format(k ,len(str(v))+1024))
+                continue
             if type(v) in [int,float]:
                 field_config.append("{} DOUBLE".format(k))
         if self.auto_id:
             field_config.append("PRIMARY KEY(_id)")
 
-        init_sql = "CREATE TABLE IF NOT EXISTS {} ({});".format(self.table_name, ",".join(field_config))
+        init_sql = "CREATE TABLE IF NOT EXISTS {} ({}) DEFAULT CHARSET={};".format(self.table_name, ",".join(field_config), self.charset)
         self.cursor.execute(init_sql)
         self.is_already_init_tagble = True
 
@@ -202,6 +206,8 @@ class async_mysql_writer(BaseWriter):
         return self
 
     def __exit__(self, exc_type, exc_value, traceback):
+        self.cursor.close()
+        self.conn.close()
         if self.debug:
             logging.info("to destination: {}.{}, total write {} lines.".format(self.database, self.table_name, self.total_count))
     
@@ -218,11 +224,12 @@ class async_mysql_writer(BaseWriter):
                 values_config = []
                 for v in line.values():
                     if type(v) in [str, list, dict, tuple, set, bool]:
-                        values_config.append("'"+str(v)+"'")
+                        values_config.append('"'+str(v)+'"')
                     if type(v) in [int,float]:
                         values_config.append(str(v))
+                    if v is None:
+                        values_config.append("null")
                 replace_sql = "REPLACE INTO {}({})  VALUES ({});".format(self.table_name, ",".join(line.keys()), ",".join(values_config))
-                print(replace_sql)
                 self.cursor.execute(replace_sql)
             self.conn.commit()
         except Exception as e:

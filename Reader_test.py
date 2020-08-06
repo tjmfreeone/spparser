@@ -4,11 +4,9 @@ from idataapi_transform import ProcessFactory, GetterConfig, WriterConfig
 import time
 
 async def main():
-    getter = AsyncReader.async_mysql_reader(query_sql="select * from EMPLOYEE", host="localhost", port=None, database="test", username="admin", password="12qwaszx", batch_size=5, max_read_lines=None,debug=True,)
-    with AsyncWriter.async_mysql_writer(table="MPLOYEE", host="localhost", port=None, database="test", username="admin", password="12qwaszx", auto_id=True,debug=True) as writer:
+    getter = AsyncReader.async_mysql_reader(query_sql="select * from ES",host="localhost", port=None, database="test", username="admin", password="12qwaszx",batch_size=100,max_read_lines=1000)
+    with AsyncWriter.async_mongo_writer("test2",host='47.106.82.140',port=55555,username='jinmin',password='jinmin',database='jinmin_data') as writer:
         async for items in getter:
-            for item in items:
-                print(item)
             await writer.write(items)
         #for item in items:
         #    print(item)

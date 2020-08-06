@@ -211,9 +211,9 @@ class async_mysql_reader(BaseReader):
     def __init__(self, query_sql=None, host=None, port=None, database=None, username=None, password=None,charset='utf8', batch_size=10, max_read_lines=None,debug=True, **kwargs):
         super().__init__()
         if not host or not database:
-            raise Exceptions.ParamsError("lack of mongodb's host or database")
+            raise Exceptions.ParamsError("lack of mysql's host or database")
         if not query_sql:
-            raise Exceptions.ParamsError("lack of sqery_sql")
+            raise Exceptions.ParamsError("lack of query_sql")
 
         self.batch_size = batch_size
         self.query_sql = query_sql 
@@ -237,7 +237,7 @@ class async_mysql_reader(BaseReader):
     def _init_connection(self):
         self.conn = pymysql.connect(host=self.host, port=self.port, user=self.username, password=self.password, 
                 database=self.database, charset=self.charset)
-        self.cursor = self.conn.cursor(pymysql.cursors.SSDictCursor)
+        self.cursor = self.conn.cursor(pymysql.cursors.DictCursor)
 
     def get_connection(self):
         '''
