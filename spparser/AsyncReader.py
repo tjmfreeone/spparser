@@ -85,7 +85,7 @@ class async_anyfile_reader(BaseReader):
         self.each_list = []
         self.f = open(self.file_path, mode=self.mode, encoding=self.encoding)
         self.debug = debug
-        self.finished = None
+        self.finished = False
         self.total_count = 0
 
     def __aiter__(self):
@@ -145,7 +145,7 @@ class async_mongo_reader(BaseReader):
         self.database = database
         self.each_list = []
         self.debug = debug
-        self.finished = None
+        self.finished = False
         self.total_count = 0
         self._init_client()
         self.max_read_lines = max_read_lines if max_read_lines else self.collection.find(self.query).count()
@@ -226,7 +226,7 @@ class async_mysql_reader(BaseReader):
         self.charset = charset
         self.each_list = []
         self.debug = debug
-        self.finished = None
+        self.finished = False
         self.total_count = 0
         self._init_connection()
         self.max_read_lines = max_read_lines if max_read_lines else self._get_query_lines_count()
@@ -255,14 +255,11 @@ class async_mysql_reader(BaseReader):
             if flag and word:
                 return word
             
-
-
     def _get_query_lines_count(self):
         target = re.search(r"SELECT(.*?)FROM",self.query_sql, re.I).group(1).strip()
         self.cursor.execute("SELECT COUNT({}) FROM {}".format(target, self.table_name))
         return self.cursor.fetchone()["COUNT({})".format(target)]
         
-
     def __aiter__(self):
         return self
 
@@ -272,7 +269,6 @@ class async_mysql_reader(BaseReader):
                 logging.info("from source: {}.{}, total get {} lines.".format(self.database, self.table_name, self.total_count))
             self._reinit_vals_and_close()
             raise StopAsyncIteration
-
         
         while True:
             line = self.cursor.fetchone()
@@ -293,7 +289,6 @@ class async_mysql_reader(BaseReader):
         self._reinit_vals_and_close()
         raise StopAsyncIteration
         
-
     def _reinit_vals_and_close(self):
         self.finished = False
         self.each_list = []
@@ -309,5 +304,3 @@ class async_mysql_reader(BaseReader):
         each = self.each_list
         self.each_list = list()
         return each
-
-    

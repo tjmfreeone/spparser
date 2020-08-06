@@ -141,8 +141,8 @@ class async_mongo_writer(BaseWriter):
 class async_mysql_writer(BaseWriter):
     def __init__(self, table=None, host=None, port=None, database=None, username=None, password=None, charset='utf8', debug=True, create_table_sql=None, auto_id=False, **kwargs):
         super().__init__()
-        if not host or not database or not table:
-            raise Exceptions.ParamsError("lack of mysql's host or database or table")
+        if not host or not database or not host:
+            raise Exceptions.ParamsError("lack of mysql's host or database or host")
         if table and create_table_sql:
             raise Exceptions.ParamsError("parameter table and create_table_sql cannot be set at the same time")
         if not table and not create_table_sql:
@@ -198,6 +198,8 @@ class async_mysql_writer(BaseWriter):
         for word in self.create_table_sql.split(" "):
             if word.upper() == "TABLE":
                 flag = True
+                continue
+            if word.upper() in ["IF", "NOT","EXISTS"]:
                 continue
             if flag and word:
                 return word
