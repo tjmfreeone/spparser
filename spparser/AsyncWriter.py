@@ -43,7 +43,7 @@ class async_csv_writer(BaseWriter):
 
     def __exit__(self,exc_type, exc_value, traceback):
         if self.debug:
-            logging.info("to destination: {}, total write {} items.".format(self.file_path, self.total_count))
+            logging.info("to destination: {}, total write {} lines.".format(self.file_path, self.total_count))
 
     def _get_headers(self,data):
         if self.each_line_type == "list":
@@ -55,6 +55,10 @@ class async_csv_writer(BaseWriter):
         self.has_headers = True
 
     async def write(self, data):
+        if not data:
+            if self.debug:
+                logging.info("to destination: {}, write {} lines.".format(self.file_path,0))
+            return 
         if  not isinstance(data,list):
             raise Exceptions.ArgValueError("input data type must be list")
 
@@ -67,7 +71,7 @@ class async_csv_writer(BaseWriter):
             self.writer.writerow(line)
             self.total_count += 1
         if self.debug:
-            logging.info("to destination: {}, write {} items.".format(self.file_path,len(data)))
+            logging.info("to destination: {}, write {} lines.".format(self.file_path,len(data)))
 
 
 class async_anyfile_writer(BaseWriter):
@@ -88,6 +92,10 @@ class async_anyfile_writer(BaseWriter):
             logging.info("to destination: {}, total write {} lines.".format(self.file_path, self.total_count))
 
     async def write(self, data):
+        if not data:
+            if self.debug:
+                logging.info("to destination: {}, write {} lines.".format(self.file_path,0))
+            return
         if not isinstance(data, list):
             raise Exceptions.ArgValueError("input data type must be list")
         for line in data:
@@ -127,6 +135,10 @@ class async_mongo_writer(BaseWriter):
             logging.info("to destination: {}.{}, total write {} lines.".format(self.database, self.collection.name, self.total_count))
     
     async def write(self, data):
+        if not data:
+            if self.debug:
+                logging.info("to destination: {}.{}, write {} lines.".format(self.database, self.collection.name, len(data)))
+            return
         if not isinstance(data, list):
             raise Exceptions.ArgValueError("input data type must be list")
         for line in data:
@@ -214,6 +226,10 @@ class async_mysql_writer(BaseWriter):
             logging.info("to destination: {}.{}, total write {} lines.".format(self.database, self.table_name, self.total_count))
     
     async def write(self, data):
+        if not data:
+            if self.debug:
+                logging.info("to destination: {}.{}, write {} lines.".format(self.database, self.table_name, len(data)))
+            return
         if not self.is_already_init_table:
             self._init_table(data_0=data[0])
         if not isinstance(data, list):
