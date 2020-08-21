@@ -1,19 +1,19 @@
-[ENG_INTRO](./README_EN.md)
-# 介绍
-spparser 的目标是为文本数据的读写、处理提供一种简洁的、高效的方式。同时支持同步、异步读写文件，并支持正则、xpath、css选择器提取数据。未来将会实现对数据库的读写支持, 以及引入NLP以提供更灵活的处理方式。其架构图如下：  
-
+[中文介绍](./README_CN.md)
+# Introduction
+The goal of spparser is to provide a concise and efficient way to read, write, and process text data. At the same time, it supports synchronous and asynchronous reading and writing files, and supports regular, xpath, css selector to extract data. In the future, read and write support for the database will be implemented, and NLP will be introduced to provide more flexible processing methods. The architecture diagram is as follows:  
 ![jiagou](https://github.com/taojinmin/MDimages/blob/master/spparser-images/jiagou-0.3.10.jpg)
+ 
 
-其中异步读写部分受到 @zpoint的[idataapi_transform](https://github.com/zpoint/idataapi-transform)启发，在此表示感谢
+The AsyncReader and AsyncWriter is inspired by @zpoint's [idataapi_transform](https://github.com/zpoint/idataapi-transform)
 
 
 
-# 安装
+# Installation
 ```shell
 pip3 install spparser
 ```
 
-# 快速开始
+# Quick Start
 
 ```python
 from spparser import Reader, Writer, Extractor
@@ -43,7 +43,7 @@ if __name__ == "__main__":
     main()
 ```
   
-使用Extractor.xpath() 提取html文本  
+Use Extractor.xpath() to extract html text 
 ```python
 from spparser import Reader, Writer, Extractor
 
@@ -73,7 +73,7 @@ def main():
 if __name__ == "__main__":
     main()
 ```  
-异步读取文件
+Reading files asynchronously
 
 ```python
 from spparser import Reader,Writer, AsyncReader, AsyncWriter
@@ -91,7 +91,7 @@ if __name__ == "__main__":
     loop = asyncio.get_event_loop()
     loop.run_until_complete(main())
 ```
-debug设置为True时，输出日志:
+When debug is set to True, output logs:
 
 ```bash
 [2020-07-17  14:54:04] AsyncReader.py[line:70] INFO: from source: ./src.csv, this batch get 10 lines
@@ -104,7 +104,7 @@ debug设置为True时，输出日志:
 [2020-07-17  14:54:04] AsyncWriter.py[line:63] INFO: to destination: ./dest.csv, write 10 lines.
 ...
 ```
-对于MongoDB的异步读写:
+For mongodb asynchronous read and write:
 ```python
 async def main():
     reader = AsyncReader.async_mongo_reader(query={},collection="src_col", host="my_address",port=27017, database="my_db",username="my_name", password="my_pwd", batch_size=100,max_read_lines=1000)
@@ -116,7 +116,7 @@ if __name__ == "__main__":
     loop = asyncio.get_event_loop()
     loop.run_until_complete(main())
 ```
-0.4.10版本增加了对MySQL异步读写的支持
+Version 0.4.10 added support for MySQL asynchronous read and write
 ```python
 async def main():
     sql = "CREATE TABLE IF NOT EXISTS TARGET_TABLE (field1 type1, field2 type2) DEFAULT CHARSET=utf8;"
