@@ -75,7 +75,7 @@ class async_csv_reader(BaseReader):
 
 
 class async_anyfile_reader(BaseReader):
-    def __init__(self,file_path, mode='r',batch_size=10, max_read_lines=None, encoding="utf-8", debug=True, **kwargs):
+    def __init__(self,file_path, mode='r',batch_size=10, max_read_lines=None, encoding="utf-8", debug=True,trim_each_line=False, **kwargs):
         super().__init__()
         self.file_path = file_path
         self.mode='r'
@@ -87,6 +87,7 @@ class async_anyfile_reader(BaseReader):
         self.debug = debug
         self.finished = False
         self.total_count = 0
+        self.trim_each_line = trim_each_line
 
     def __aiter__(self):
         return self
@@ -102,7 +103,16 @@ class async_anyfile_reader(BaseReader):
             if self.max_read_lines and self.total_count >= self.max_read_lines:
                 self.finished = True
                 break
-            self.each_list.append(self.f.readline().strip())
+
+            line = self.f.readline()
+            if line and self.trim_each_line:
+                self.each_list.append(line.strip())
+            elif line and not self.trim_each_line:
+                self.each_list.append(line)
+            else:
+                self.finished = True
+                break
+
             self.total_count += 1
             if len(self.each_list) >= self.batch_size:
                 return self._ret_each()
