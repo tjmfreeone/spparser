@@ -2,8 +2,8 @@ from .utils import Exceptions
 import csv
 import re
 import logging
-import pymongo
-import pymysql
+import motor.motor_asyncio
+import aiomysql
 
 class BaseReader(object):
     def __init__(self):
@@ -141,13 +141,13 @@ class async_anyfile_reader(BaseReader):
 
 
 class async_mongo_reader(BaseReader):
-    def __init__(self, collection, query=None, host=None, port=None, database=None, username=None, password=None, batch_size=10, max_read_lines=None,debug=True, **kwargs):
+    def __init__(self, collection, query=None, host=None, port=None, database=None, username=None, password=None, batch_size=10, max_read_lines=None, debug=True, **kwargs):
         super().__init__()
         if not host or not port or not database:
             raise Exceptions.ParamsError("lack of mongodb's host or port or database")
         self.collection_name = collection
         self.batch_size = batch_size
-        self.query = query if query else {}
+        self.query = query or {}
         self.host = host
         self.port = port
         self.username = username
@@ -156,18 +156,22 @@ class async_mongo_reader(BaseReader):
         self.each_list = []
         self.debug = debug
         self.finished = False
-        self.total_count = 0
-        self._init_client()
-        self.max_read_lines = max_read_lines if max_read_lines else self.collection.find(self.query).count()
+        self.init_flag = False
+        self.max_read_lines = max_read_lines
+        
+    async def _init_client(self):
+        self.client = motor.motor_asyncio.AsyncIOMotorClient('mongodb://{}:{}@{}:{}/{}'.format(self.username, self.password, self.host, self.port, self.database))
+        self.db = self.client[self.database]
+        self.collection = self.db[self.collection_name]
+        self.cursor = self.collection.find(self.query, batch_size=self.batch_size)
+        if self.query:
+            self.docs_count = await self.collection.count_documents(self.query)
+        else:
+            self.docs_count = await self.collection.estimated_document_count()
+        self.max_read_lines = min(self.max_read_lines, self.docs_count) if self.max_read_lines else self.docs_count
         self.percentage = None
         self.done_lines_num = 0
 
-    def _init_client(self):
-        self.client = pymongo.MongoClient(host=self.host, port=self.port)
-        self.db = self.client[self.database]
-        self.db.authenticate(name=self.username, password=self.password)
-        self.collection = self.db[self.collection_name]
-        self.cursor = self.collection.find(self.query, batch_size=self.batch_size)
 
     def get_db(self):
         return self.db
@@ -176,38 +180,40 @@ class async_mongo_reader(BaseReader):
         return self
 
     async def __anext__(self):
+        if not self.init_flag:
+            await self._init_client()
+            self.init_flag = True
+
         if self.finished:
             if self.debug:
-                logging.info("from source: {}.{}, total get {} lines.".format(self.database, self.collection.name, self.total_count))
+                logging.info("from source: {}.{}, total get {} lines.".format(self.database, self.collection.name, self.done_lines_num))
             self._reinit_vals()
             raise StopAsyncIteration
 
-        for line in self.cursor:
-            if self.max_read_lines and self.total_count >= self.max_read_lines:
+        async for line in self.cursor:
+            if self.max_read_lines and self.done_lines_num >= self.max_read_lines:
                 self.finished = True
                 break
             self.done_lines_num += 1
             self.each_list.append(line)
-            self.total_count += 1
             if len(self.each_list) >= self.batch_size:
                 return self._ret_each()
 
         if self.each_list:
             self.finished = True
             return self._ret_each()
+
         if self.debug:
-            logging.info("from source: {}.{}, total get {} lines.".format(self.database, self.collection.name, self.total_count))
+            logging.info("from source: {}.{}, total get {} lines.".format(self.database, self.collection.name, self.done_lines_num))
         self._reinit_vals()
-        raise StopAsyncIteration
-        
+        raise StopAsyncIteration 
 
     def _reinit_vals(self):
         self.finished = False
         self.each_list = []
-        self.total_count = 0
-        self.read_lines_count = 0
+        self.done_lines_num = 0
         self.each_list.clear()
-        #self.collection.cusor.close()
+        
 
     def _ret_each(self):
         if self.debug and self.each_list:
@@ -218,7 +224,7 @@ class async_mongo_reader(BaseReader):
 
 
 class async_mysql_reader(BaseReader):
-    def __init__(self, query_sql=None, host=None, port=None, database=None, username=None, password=None,charset='utf8', batch_size=10, max_read_lines=None,debug=True, **kwargs):
+    def __init__(self, query_sql=None, host=None, port=None, database=None, username=None, password=None, charset='utf8', batch_size=10, max_read_lines=None,debug=True, **kwargs):
         super().__init__()
         if not host or not database:
             raise Exceptions.ParamsError("lack of mysql's host or database")
@@ -229,7 +235,7 @@ class async_mysql_reader(BaseReader):
         self.query_sql = query_sql 
         self.table_name = self._get_table_name()
         self.host = host
-        self.port = port if port else 3306
+        self.port = port or 3306
         self.username = username
         self.password = password
         self.database = database
@@ -237,24 +243,18 @@ class async_mysql_reader(BaseReader):
         self.each_list = []
         self.debug = debug
         self.finished = False
-        self.total_count = 0
-        self._init_connection()
-        self.max_read_lines = max_read_lines if max_read_lines else self._get_query_lines_count()
-        self.cursor.execute(self.query_sql)
-        self.percentage = None
         self.done_lines_num = 0
+        self.percentage = None
+        self.max_read_lines = max_read_lines
+        self._init_flag = False
 
-    def _init_connection(self):
-        self.conn = pymysql.connect(host=self.host, port=self.port, user=self.username, password=self.password, 
-                database=self.database, charset=self.charset)
-        self.cursor = self.conn.cursor(pymysql.cursors.DictCursor)
-
-    def get_connection(self):
-        '''
-        return new connection
-        '''
-        return pymsql.connect(host=self.host, port=self.port, user=self.username, password=self.password,
-                database=self.database, charset=self.charset)
+    async def _init_connection(self):
+        self.conn = await aiomysql.connect(host=self.host, port=self.port, user=self.username, 
+                                           password=self.password, db=self.database, charset=self.charset)
+        self.cursor = await self.conn.cursor(aiomysql.cursors.DictCursor)
+        self.docs_count = await self._get_query_lines_count()
+        self.max_read_lines = min(self.max_read_lines, self.docs_count) if self.max_read_lines else self.docs_count
+        await self.cursor.execute(self.query_sql)
 
     def _get_table_name(self):
         flag = False
@@ -265,47 +265,49 @@ class async_mysql_reader(BaseReader):
             if flag and word:
                 return word
             
-    def _get_query_lines_count(self):
-        target = re.search(r"SELECT(.*?)FROM",self.query_sql, re.I).group(1).strip()
-        self.cursor.execute("SELECT COUNT({}) FROM {}".format(target, self.table_name))
-        return self.cursor.fetchone()["COUNT({})".format(target)]
+    async def _get_query_lines_count(self):
+        target = re.search(r"SELECT(.*?)FROM", self.query_sql, re.I).group(1).strip()
+        await self.cursor.execute("SELECT COUNT({}) FROM {}".format(target, self.table_name))
+        count = await self.cursor.fetchone()
+        return count["COUNT({})".format(target)]
         
     def __aiter__(self):
         return self
 
     async def __anext__(self):
+        if not self._init_flag:
+            await self._init_connection()
+            self._init_flag = True
+
         if self.finished:
             if self.debug:
-                logging.info("from source: {}.{}, total get {} lines.".format(self.database, self.table_name, self.total_count))
-            self._reinit_vals_and_close()
+                logging.info("from source: {}.{}, total get {} lines.".format(self.database, self.table_name, self.done_lines_num))
+            await self._reinit_vals_and_close()
             raise StopAsyncIteration
         
         while True:
-            line = self.cursor.fetchone()
-            if self.max_read_lines and self.total_count >= self.max_read_lines:
+            line = await self.cursor.fetchone()
+            if self.max_read_lines and self.done_lines_num >= self.max_read_lines:
                 self.finished = True
                 break
             self.done_lines_num += 1
             self.each_list.append(line)
-            self.total_count += 1
             if len(self.each_list) >= self.batch_size:
                 return self._ret_each()
 
         if self.each_list:
             self.finished = True
             return self._ret_each()
+
         if self.debug:
-            logging.info("from source: {}.{}, total get {} lines.".format(self.database, self.table_name, self.total_count))
-        self._reinit_vals_and_close()
+            logging.info("from source: {}.{}, total get {} lines.".format(self.database, self.table_name, self.done_lines_num))
+        await self._reinit_vals_and_close()
         raise StopAsyncIteration
         
-    def _reinit_vals_and_close(self):
+    async def _reinit_vals_and_close(self):
         self.finished = False
-        self.each_list = []
-        self.total_count = 0
-        self.read_lines_count = 0
         self.each_list.clear()
-        self.cursor.close()
+        await self.cursor.close()
         self.conn.close()
 
     def _ret_each(self):

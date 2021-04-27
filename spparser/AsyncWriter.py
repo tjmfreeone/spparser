@@ -2,10 +2,13 @@ import logging
 import csv
 import pymongo
 import pymysql
+import motor.motor_asyncio
+import aiomysql
 
 from .utils import Exceptions
 from hashlib import md5
 from pymongo import UpdateOne
+
 
 
 class BaseWriter(object):
@@ -118,34 +121,41 @@ class async_mongo_writer(BaseWriter):
         self.database = database
         self.debug = debug
         self.finished = None
-        self.total_count = 0
-        self._init_client()
+        self.done_lines_num = 0
+        self.init_flag = False
     
-    def _init_client(self):
-        self.client = pymongo.MongoClient(host=self.host, port=self.port)
+    async def _init_client(self):
+        self.client = motor.motor_asyncio.AsyncIOMotorClient('mongodb://{}:{}@{}:{}/{}'.format(self.username, self.password, self.host, self.port, self.database))
         self.db = self.client[self.database]
-        self.db.authenticate(name=self.username, password=self.password)
         self.collection = self.db[self.collection_name]
+        self.done_lines_num = 0
 
     def __enter__(self):
         return self
 
     def __exit__(self, exc_type, exc_value, traceback):
         if self.debug:
-            logging.info("to destination: {}.{}, total write {} lines.".format(self.database, self.collection.name, self.total_count))
+            logging.info("to destination: {}.{}, total write {} lines.".format(self.database, self.collection_name, self.done_lines_num))
     
     async def write(self, data):
+        if not self.init_flag:
+            await self._init_client()
+            self.init_flag = True
+
         if not data:
             if self.debug:
                 logging.info("to destination: {}.{}, write {} lines.".format(self.database, self.collection.name, len(data)))
             return
+
         if not isinstance(data, list):
             raise Exceptions.ArgValueError("input data type must be list")
+
         for line in data:
             if "_id" not in line.keys():
                 line["_id"] = md5(str(line).encode()).hexdigest()
-        self.collection.bulk_write([UpdateOne({"_id":line["_id"]}, {"$set":line}, upsert=True) for line in data])
-        self.total_count += len(data)
+
+        await self.collection.bulk_write([UpdateOne({"_id":line["_id"]}, {"$set":line}, upsert=True) for line in data])
+        self.done_lines_num += len(data)
         if self.debug:
             logging.info("to destination: {}.{}, write {} lines.".format(self.database, self.collection.name, len(data)))
 
@@ -158,30 +168,31 @@ class async_mysql_writer(BaseWriter):
         if table and create_table_sql:
             raise Exceptions.ParamsError("parameter table and create_table_sql cannot be set at the same time")
         if not table and not create_table_sql:
-            raise Exceptions.ParamsError("one of  'table' and 'create_table_sql' must be set")
+            raise Exceptions.ParamsError("'table' or 'create_table_sql' must be set")
         self.create_table_sql = create_table_sql
         self.table_name = table if table else self._get_table_name()
         self.host = host
-        self.port = port
+        self.port = port or 3306 
         self.username = username
         self.password = password
         self.database = database
         self.charset = charset
-        self._init_connection()
         self.auto_id = auto_id
         self.debug = debug
         self.finished = None
         self.total_count = 0
         self.is_already_init_table = False
-    
-    def _init_connection(self):
-        self.conn = pymysql.connect(host=self.host, port=self.port, user=self.username, password=self.password,
-                database=self.database, charset=self.charset)
-        self.cursor = self.conn.cursor()
+        self._init_flag = False
 
-    def _init_table(self, data_0=None):
+    async def _init_connection(self):
+        self.conn = await aiomysql.connect(host=self.host, port=self.port, user=self.username,
+                                           password=self.password, db=self.database, charset=self.charset)
+        self.cursor = await self.conn.cursor()
+
+
+    async def _init_table(self, data_0=None):
         if self.create_table_sql:
-            self.cursor.execute(self.create_table_sql)
+            await self.cursor.execute(self.create_table_sql)
             self.is_already_init_table = True
             return
         if not data_0:
@@ -202,7 +213,7 @@ class async_mysql_writer(BaseWriter):
             field_config.append("PRIMARY KEY(_id)")
 
         init_sql = "CREATE TABLE IF NOT EXISTS {} ({}) DEFAULT CHARSET={};".format(self.table_name, ",".join(field_config), self.charset)
-        self.cursor.execute(init_sql)
+        await self.cursor.execute(init_sql)
         self.is_already_init_tagble = True
 
     def _get_table_name(self):
@@ -220,18 +231,24 @@ class async_mysql_writer(BaseWriter):
         return self
 
     def __exit__(self, exc_type, exc_value, traceback):
-        self.cursor.close()
+        #self.cursor.close()
         self.conn.close()
         if self.debug:
             logging.info("to destination: {}.{}, total write {} lines.".format(self.database, self.table_name, self.total_count))
     
     async def write(self, data):
+        if not self._init_flag:
+            await self._init_connection()
+            self._init_flag = True
+
         if not data:
             if self.debug:
                 logging.info("to destination: {}.{}, write {} lines.".format(self.database, self.table_name, len(data)))
             return
+
         if not self.is_already_init_table:
-            self._init_table(data_0=data[0])
+            await self._init_table(data_0=data[0])
+
         if not isinstance(data, list):
             raise Exceptions.ArgValueError("input data type must be list")
 
@@ -243,13 +260,14 @@ class async_mysql_writer(BaseWriter):
                 for v in line.values():
                     if type(v) in [str, list, dict, tuple, set, bool]:
                         values_config.append('"'+str(v)+'"')
-                    if type(v) in [int,float]:
+                    if type(v) in [int, float]:
                         values_config.append(str(v))
                     if v is None:
                         values_config.append("null")
                 replace_sql = "REPLACE INTO {}({})  VALUES ({});".format(self.table_name, ",".join(line.keys()), ",".join(values_config))
-                self.cursor.execute(replace_sql)
-            self.conn.commit()
+                await self.cursor.execute(replace_sql)
+            await self.conn.commit()
+
         except Exception as e:
             self.conn.rollback()
             raise Exceptions.AsyncWriterError(e)
